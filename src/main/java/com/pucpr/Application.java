@@ -4,9 +4,11 @@ import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.api.java.function.Function2;
 import scala.Tuple2;
 import scala.Tuple3;
 
+import java.util.HashMap;
 import java.util.List;
 
 import static com.pucpr.Crime.showAnswer;
@@ -32,8 +34,8 @@ public class Application {
         long count = dataSet.count();
 
         //qtdade crimes por ano
-        JavaRDD<Integer> byAno = dataSet.map(crime -> crime.ano);
-        showAnswer("Quantidade de crimes por ano: ", byAno.countByValue());
+        JavaRDD<Integer> porAno = dataSet.map(crime -> crime.ano);
+        showAnswer("Quantidade de crimes por ano: ", porAno.countByValue());
 
         //Quantidade de crimes por ano que sejam do tipo NARCOTICS
         JavaRDD<Crime> narcotics = dataSet.filter(crime -> crime.tipo.equalsIgnoreCase("NARCOTICS"));
@@ -48,24 +50,31 @@ public class Application {
                 .countByValue());
 
         //Mês com maior ocorrência de crimes;
-        JavaPairRDD<Integer, Float> pairs = dataSet.mapToPair(crime -> new Tuple2<>(crime.mes, 1F));
-        JavaPairRDD<Integer, Float> months = pairs.reduceByKey(Float::sum);
+        JavaPairRDD<Integer, Float> mesPair = dataSet.mapToPair(crime -> new Tuple2<>(crime.mes, 1F)).reduceByKey(Float::sum);
         showAnswer("Mês com a maior ocorrencia de crimes",
-                months.reduce(Application::max));
+                mesPair.reduce(Application::max));
 
         //Mês com a maior média de ocorrência de crimes;
         showAnswer("Mês com a maior média de ocorrencias",
-                months.map(a -> new Tuple2<>(a._1, (a._2 / count) * 100))
+                mesPair.map(a -> new Tuple2<>(a._1, (a._2 / count) * 100))
                         .reduce(Application::max));
 
         //Mês por ano com a maior ocorrência de crimes;
-        JavaRDD<Tuple3<Integer, Integer, Integer>> mes
+        JavaPairRDD<Tuple2<Integer, Integer>, Float> mesPorAno = dataSet.mapToPair(crime -> new Tuple2<>(new Tuple2<>(crime.ano, crime.mes), 1F)).reduceByKey(Float::sum);
+
+
         //Mês com a maior ocorrência de crimes do tipo “DECEPTIVE PRACTICE”
+        JavaRDD<Crime> decPractice = dataSet.filter(crime -> crime.tipo.equalsIgnoreCase("DECEPTIVE PRACTICE"));
+        showAnswer("Crimes do tipo NARCOTICS por ano", decPractice.map(crime -> crime.mes).countByValue());
+
         //Dia do ano com a maior ocorrência de crimes;
+
+
         ctx.stop();
     }
 
-    private static Tuple2<Integer, Float> max(Tuple2<Integer, Float> x, Tuple2<Integer, Float> y) {
+
+    public static <T> Tuple2<T, Float> max(Tuple2<T, Float> x, Tuple2<T, Float> y) {
         if (x._2 > y._2) return x;
         return y;
     }
