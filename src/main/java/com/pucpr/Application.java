@@ -4,14 +4,12 @@ import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.api.java.function.Function2;
 import scala.Tuple2;
-import scala.Tuple3;
 
-import java.util.HashMap;
+import java.io.Serializable;
 import java.util.List;
 
-import static com.pucpr.Crime.showAnswer;
+import static com.pucpr.Application.Crime.showAnswer;
 
 public class Application {
 
@@ -20,7 +18,7 @@ public class Application {
         SparkConf conf = new SparkConf().setMaster("local").setAppName("pratica");
         JavaSparkContext ctx = new JavaSparkContext(conf);
         ctx.setLogLevel("ERROR");
-        JavaRDD<String> file = ctx.textFile("src/main/resources/ocorrencias_criminais_sample.csv");
+        JavaRDD<String> file = ctx.textFile("src/main/resources/ocorrencias_criminais.csv");
 
         JavaRDD<Crime> dataSet = file.map(s -> {
             String[] campos = s.split(";");
@@ -33,42 +31,59 @@ public class Application {
         dataSet.cache();
         long count = dataSet.count();
 
-        //qtdade crimes por ano
+        //1. Quantidade de crimes por ano
         JavaRDD<Integer> porAno = dataSet.map(crime -> crime.ano);
         showAnswer("Quantidade de crimes por ano: ", porAno.countByValue());
 
-        //Quantidade de crimes por ano que sejam do tipo NARCOTICS
+        //2. Quantidade de crimes por ano que sejam do tipo NARCOTICS
         JavaRDD<Crime> narcotics = dataSet.filter(crime -> crime.tipo.equalsIgnoreCase("NARCOTICS"));
-        showAnswer("Crimes do tipo NARCOTICS por ano", narcotics.map(crime -> crime.ano).countByValue());
+        showAnswer("Crimes do tipo NARCOTICS por ano: ", narcotics.map(crime -> crime.ano).countByValue());
 
-        //Quantidade de crimes por ano, que sejam do tipo NARCOTICS, e tenham ocorrido em dias pares;
-        showAnswer("Por narcoticos dias pares: ", narcotics.filter(crime -> {
-            int dia = crime.dia;
-            return (dia % 2) == 0;
-        })
+        //3. Quantidade de crimes por ano, que sejam do tipo NARCOTICS, e tenham ocorrido em dias pares
+        showAnswer("Crimes do tipo NARCOTICS em dias pares: ", narcotics
+                .filter(crime -> (crime.dia % 2) == 0)
                 .map(crime -> crime.ano)
                 .countByValue());
 
-        //Mês com maior ocorrência de crimes;
-        JavaPairRDD<Integer, Float> mesPair = dataSet.mapToPair(crime -> new Tuple2<>(crime.mes, 1F)).reduceByKey(Float::sum);
-        showAnswer("Mês com a maior ocorrencia de crimes",
-                mesPair.reduce(Application::max));
+        //4. Mês com maior ocorrência de crimes
+        JavaPairRDD<Integer, Float> mes = dataSet
+                .mapToPair(crime -> new Tuple2<>(crime.mes, 1F))
+                .reduceByKey(Float::sum);
+        showAnswer("Mês com maior ocorrência de crimes: ",
+                mes.reduce(Application::max));
 
-        //Mês com a maior média de ocorrência de crimes;
-        showAnswer("Mês com a maior média de ocorrencias",
-                mesPair.map(a -> new Tuple2<>(a._1, (a._2 / count) * 100))
+        //5. Mês com a maior média de ocorrência de crimes;
+        showAnswer("Mês com a maior média de ocorrencias: ",
+                mes.map(a -> new Tuple2<>(a._1, (a._2 / count) * 100))
                         .reduce(Application::max));
 
-        //Mês por ano com a maior ocorrência de crimes;
-        JavaPairRDD<Tuple2<Integer, Integer>, Float> mesPorAno = dataSet.mapToPair(crime -> new Tuple2<>(new Tuple2<>(crime.ano, crime.mes), 1F)).reduceByKey(Float::sum);
+        //6. Mês por ano com a maior ocorrência de crimes;
+        JavaRDD<String> mesAno = dataSet.map(crime ->
+                crime.ano + "/" + crime.mes);
+        JavaPairRDD<String, Integer> mapMesAno = mesAno
+                .mapToPair(s -> new Tuple2<>(s.split(";")[0], 1))
+                .reduceByKey(Integer::sum)
+                .mapToPair(Tuple2::swap)
+                .sortByKey(false)
+                .mapToPair(Tuple2::swap);
+        List<Tuple2<String, Integer>> listaMesAno = mapMesAno.collect();
+        System.out.println(listaMesAno);
 
+        //7. Mês com a maior ocorrência de crimes do tipo “DECEPTIVE PRACTICE”
+        JavaRDD<Crime> decPractice = dataSet
+                .filter(crime -> crime.tipo
+                        .equalsIgnoreCase("DECEPTIVE PRACTICE"));
+        showAnswer("Crimes do tipo DECEPTIVE PRACTICE por ano: ",
+                decPractice.map(crime -> crime.mes).countByValue());
 
-        //Mês com a maior ocorrência de crimes do tipo “DECEPTIVE PRACTICE”
-        JavaRDD<Crime> decPractice = dataSet.filter(crime -> crime.tipo.equalsIgnoreCase("DECEPTIVE PRACTICE"));
-        showAnswer("Crimes do tipo NARCOTICS por ano", decPractice.map(crime -> crime.mes).countByValue());
-
-        //Dia do ano com a maior ocorrência de crimes;
-
+        //8. Dia do ano com a maior ocorrência de crimes;
+        JavaRDD<String> diaMes = dataSet.map(crime ->
+                crime.dia + "/" + crime.mes);
+        JavaPairRDD<String, Integer> data = diaMes
+                .mapToPair(s -> new Tuple2<>(s.split(";")[0], 1))
+                .reduceByKey(Integer::sum)
+                .sortByKey(false);
+        showAnswer("Dia do ano com a maior ocorrência de crimes: ", data.first());
 
         ctx.stop();
     }
@@ -79,4 +94,23 @@ public class Application {
         return y;
     }
 
+    public static class Crime implements Serializable {
+
+        int dia;
+        int mes;
+        int ano;
+        String tipo;
+
+        public Crime(int dia, int mes, int ano, String tipo) {
+            this.dia = dia;
+            this.mes = mes;
+            this.ano = ano;
+            this.tipo = tipo;
+        }
+
+        static void showAnswer(String a, Object b) {
+            System.out.println(a + " " + b);
+        }
+
+    }
 }
