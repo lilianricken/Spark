@@ -9,8 +9,6 @@ import scala.Tuple2;
 import java.io.Serializable;
 import java.util.List;
 
-import static com.pucpr.Application.Crime.showAnswer;
-
 public class Application {
 
     public static void main(String[] args) {
@@ -27,8 +25,7 @@ public class Application {
             int ano = Integer.parseInt(campos[2]);
             String tipo = campos[4];
             return new Crime(dia, mes, ano, tipo);
-        });
-        dataSet.cache();
+        }).cache();
         long count = dataSet.count();
 
         //1. Quantidade de crimes por ano
@@ -58,16 +55,20 @@ public class Application {
                         .reduce(Application::max));
 
         //6. Mês por ano com a maior ocorrência de crimes;
-        JavaRDD<String> mesAno = dataSet.map(crime ->
-                crime.ano + "/" + crime.mes);
-        JavaPairRDD<String, Integer> mapMesAno = mesAno
+        List<Tuple2<String, Integer>> mesAno = dataSet.map(crime ->
+                crime.ano + "/" + crime.mes)
                 .mapToPair(s -> new Tuple2<>(s.split(";")[0], 1))
                 .reduceByKey(Integer::sum)
                 .mapToPair(Tuple2::swap)
                 .sortByKey(false)
-                .mapToPair(Tuple2::swap);
-        List<Tuple2<String, Integer>> listaMesAno = mapMesAno.collect();
-        System.out.println(listaMesAno);
+                .mapToPair(Tuple2::swap)
+                .take(5)
+                ;
+        showAnswer("Crimes por mês de cada ano", mesAno);
+        /*Professor: a partir deste ponto não consegui retirar da lista o mês com o maior caso de
+        ocorrencias de cada ano. Acredito que isso possa ser feito com flatmap, mas como mandei em
+        mensagem e pelo forum e não obtive resposta estou entregando até onde consegui fazer
+         */
 
         //7. Mês com a maior ocorrência de crimes do tipo “DECEPTIVE PRACTICE”
         JavaRDD<Crime> decPractice = dataSet
@@ -94,6 +95,10 @@ public class Application {
         return y;
     }
 
+    public static void showAnswer(String a, Object b) {
+        System.out.println(a + " " + b);
+    }
+
     public static class Crime implements Serializable {
 
         int dia;
@@ -108,9 +113,20 @@ public class Application {
             this.tipo = tipo;
         }
 
-        static void showAnswer(String a, Object b) {
-            System.out.println(a + " " + b);
+        public int getDia() {
+            return dia;
         }
 
+        public int getMes() {
+            return mes;
+        }
+
+        public int getAno() {
+            return ano;
+        }
+
+        public String getTipo() {
+            return tipo;
+        }
     }
 }
